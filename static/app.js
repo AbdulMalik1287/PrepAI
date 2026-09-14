@@ -150,14 +150,74 @@ function highlight(words, index) {
   }
 }
 
-function speak(text) {
+let audioCtx = null;
+const audio = () => audioCtx || (audioCtx = new AudioContext());
+const wordAt = (words, char) => words.filter((w) => w.start <= char).length - 1;
+
+function settle(words) {
+  $("#question").classList.add("settled");
+  highlight(words, words.length);
+}
+
+// Server voice first (natural, and the orb follows the real waveform); browser voice if that fails.
+async function speak(text) {
   const words = renderQuestion(text);
-  const settle = () => {
-    $("#question").classList.add("settled");
-    highlight(words, words.length);
-  };
+  const loading = new AbortController();
+  stopSpeaking = () => loading.abort();
+  try {
+    return await speakServer(text, words, loading.signal);
+  } catch (err) {
+    if (loading.signal.aborted) return settle(words); // skipped while the audio was still loading
+    return speakBrowser(text, words);
+  }
+}
+
+async function speakServer(text, words, signal) {
+  const res = await fetch(`/api/interviews/${session.id}/speech`, { signal });
+  if (!res.ok) throw new Error("voice unavailable");
+  const ctx = audio();
+  await ctx.resume();
+  const buffer = await ctx.decodeAudioData(await res.arrayBuffer());
+  if (signal.aborted) throw new DOMException("skipped", "AbortError");
+
+  const source = ctx.createBufferSource();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  source.buffer = buffer;
+  source.connect(analyser).connect(ctx.destination);
+  const samples = new Float32Array(analyser.fftSize);
+
+  return new Promise((resolve) => {
+    let done = false, raf = 0;
+    const began = ctx.currentTime;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      cancelAnimationFrame(raf);
+      try { source.stop(); } catch {}
+      mainOrb.setLevel(0);
+      settle(words);
+      resolve();
+    };
+    const tick = () => {
+      // No word timestamps from the TTS, so spread the text evenly over the clip.
+      highlight(words, wordAt(words, ((ctx.currentTime - began) / buffer.duration) * text.length * 1.05));
+      analyser.getFloatTimeDomainData(samples);
+      let sum = 0;
+      for (const s of samples) sum += s * s;
+      mainOrb.setLevel(Math.min(1, Math.sqrt(sum / samples.length) * 6));
+      raf = requestAnimationFrame(tick);
+    };
+    source.onended = finish;
+    stopSpeaking = finish;
+    source.start();
+    tick();
+  });
+}
+
+function speakBrowser(text, words) {
   if (!("speechSynthesis" in window)) {
-    settle();
+    settle(words);
     return Promise.resolve();
   }
   return new Promise((resolve) => {
@@ -172,20 +232,20 @@ function speak(text) {
     const timer = setInterval(() => {
       if (!startedAt || fromBoundary) return;
       const char = ((performance.now() - startedAt) / 1000) * 14.5 * utterance.rate;
-      step(words.filter((w) => w.start <= char).length - 1);
+      step(wordAt(words, char));
     }, 90);
     const finish = () => {
       if (done) return;
       done = true;
       clearInterval(timer);
-      settle();
+      settle(words);
       resolve();
     };
     utterance.onstart = () => (startedAt = performance.now());
     utterance.onboundary = (e) => {
       if (e.name && e.name !== "word") return;
       fromBoundary = true;
-      step(words.filter((w) => w.start <= e.charIndex).length - 1);
+      step(wordAt(words, e.charIndex));
     };
     utterance.onend = finish;
     utterance.onerror = finish;
@@ -207,7 +267,7 @@ let cancelListening = null;
 async function openMic() {
   if (mic) return mic;
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-  const ctx = new AudioContext();
+  const ctx = audio();
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 1024;
   ctx.createMediaStreamSource(stream).connect(analyser);
@@ -394,6 +454,7 @@ $("#start-form").addEventListener("submit", async (e) => {
   let step = 0;
   const cycle = setInterval(() => ($("#loading-text").textContent = steps[Math.min(++step, steps.length - 1)]), 2200);
   // Unlock audio inside the click so the first question can play after the network wait.
+  audio().resume();
   if ("speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
 
   try {

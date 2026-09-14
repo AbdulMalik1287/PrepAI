@@ -120,6 +120,30 @@ def test_resume_links():
     assert not is_public_url("file:///etc/passwd")
 
 
+def test_voice_helpers():
+    import wave
+    from io import BytesIO
+
+    from voice import chunk_text, join_wavs
+
+    question = "Walk me through the graph you built for the EEG classifier, and why GCN layers over attention. " * 3
+    chunks = chunk_text(question)
+    assert all(len(c) <= 200 for c in chunks) and " ".join(chunks) == question.strip(), chunks
+    assert chunk_text("x" * 450) == ["x" * 200, "x" * 200, "x" * 50]
+    assert chunk_text("Short one?") == ["Short one?"]
+
+    def wav(frames: int, bogus_size: bool = False) -> bytes:
+        buf = BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(24000)
+            w.writeframes(b"\x01\x00" * frames)
+        data = buf.getvalue()
+        return data[:40] + b"\xff\xff\xff\xff" + data[44:] if bogus_size else data  # streamed-WAV style header
+
+    with wave.open(BytesIO(join_wavs([wav(100), wav(50, bogus_size=True)]))) as joined:
+        assert (joined.getnframes(), joined.getframerate()) == (150, 24000)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

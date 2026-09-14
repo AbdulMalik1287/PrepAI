@@ -33,7 +33,7 @@ resume.pdf ─> text + links inside it ─> fetch GitHub / portfolio pages ─> 
 | Orchestration | LangGraph `StateGraph` with `interrupt()` per answer, SQLite checkpointer |
 | LLM | `init_chat_model`, default `groq:openai/gpt-oss-120b` (set `LLM_MODEL` for any provider) |
 | Speech to text | Groq `whisper-large-v3-turbo`, biased with names and tools from your resume |
-| Text to speech | Browser `speechSynthesis`, with word-by-word highlighting |
+| Text to speech | Groq Orpheus (`TTS_VOICE`, default `troy`), split under its 200 char limit and joined; orb follows the real waveform. Falls back to browser `speechSynthesis` |
 | Turn detection | Browser mic level: answer ends after 1.6 s of silence, or tap the mic |
 
 **The adaptive part** is `next_move()` in `graph.py`. It's plain Python over the rubric
@@ -61,11 +61,12 @@ The browser only sends audio, so a client can't rewrite its own interview.
 |---|---|
 | `resume.py` | PDF/TXT parsing, link extraction (PDF annotations too), resource fetching with a private-IP guard, profile extraction |
 | `graph.py` | State, rubric schemas, router, prompts, graph |
-| `server.py` | FastAPI: `POST /api/interviews`, `POST /api/interviews/{id}/answer`, `POST /api/interviews/{id}/end`, `GET /api/interviews/{id}` |
+| `voice.py` | Groq Whisper transcription and Orpheus speech |
+| `server.py` | FastAPI: `POST /api/interviews`, `POST /api/interviews/{id}/answer`, `GET /api/interviews/{id}/speech`, `POST /api/interviews/{id}/end`, `GET /api/interviews/{id}` |
 | `static/` | Single-page UI: setup, live interview, report |
 | `test_graph.py` | `python test_graph.py`: router rules plus a full interview through the real graph with a fake LLM |
 
 ## Not in v1
 
 LinkedIn scraping (login wall), barge-in while the AI is talking (you can tap to skip),
-streamed TTS voices (ElevenLabs etc.), audio recording, accounts.
+streaming TTS (the whole question is synthesized before it plays), audio recording, accounts.

@@ -3,6 +3,7 @@
 The browser only sends audio and plays back questions. Prompts, transcript and grades
 live on the server in the LangGraph checkpoint, so the client can't edit its own score.
 """
+import logging
 import os
 import sqlite3
 import threading
@@ -11,7 +12,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
@@ -19,10 +20,11 @@ from langgraph.types import Command
 load_dotenv()
 
 import graph  # noqa: E402  (reads LLM_MODEL after .env is loaded)
+import voice  # noqa: E402
 from resume import extract_profile, fetch_resources, read_resume  # noqa: E402
 
 MAX_UPLOAD = 5 * 1024 * 1024
-STT_MODEL = os.getenv("STT_MODEL", "whisper-large-v3-turbo")
+log = logging.getLogger("prepai")
 
 app = FastAPI(title="PrepAI")
 interviews = graph.build_graph(SqliteSaver(sqlite3.connect(os.getenv("DB_PATH", "prepai.db"), check_same_thread=False)))
@@ -35,16 +37,6 @@ def config(sid: str) -> dict:
 
 def pending_question(result: dict) -> dict | None:
     return result["__interrupt__"][0].value if result.get("__interrupt__") else None
-
-
-def transcribe(audio: bytes, filename: str, keywords: list[str]) -> str:
-    from groq import Groq
-
-    # Whisper's prompt biases spelling toward the candidate's own tools and project names.
-    result = Groq().audio.transcriptions.create(
-        file=(filename, audio), model=STT_MODEL, language="en", prompt=", ".join(keywords)[:800],
-    )
-    return result.text.strip()
 
 
 @app.post("/api/interviews")
@@ -85,7 +77,7 @@ def answer(sid: str, audio: UploadFile | None = File(None), text: str | None = F
         if text and text.strip():
             said = text.strip()
         elif audio:
-            said = transcribe(audio.file.read(MAX_UPLOAD), audio.filename or "answer.webm", state.values["profile"]["keywords"])
+            said = voice.transcribe(audio.file.read(MAX_UPLOAD), audio.filename or "answer.webm", state.values["profile"]["keywords"])
         else:
             said = ""
         if len(said) < 2:
@@ -94,6 +86,20 @@ def answer(sid: str, audio: UploadFile | None = File(None), text: str | None = F
 
     question = pending_question(result)
     return {"transcript": said, "done": question is None, **(question or {})}
+
+
+@app.get("/api/interviews/{sid}/speech")
+def speech(sid: str):
+    """Audio for the question currently waiting on an answer. Only that text, so the endpoint can't voice arbitrary input."""
+    state = interviews.get_state(config(sid))
+    if not state.next:
+        raise HTTPException(404, "No question waiting")
+    try:
+        audio = voice.synthesize(state.values["question"])
+    except Exception as err:  # the browser falls back to its built-in voice
+        log.warning("TTS failed: %s", err)
+        raise HTTPException(502, "Voice unavailable")
+    return Response(audio, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/interviews/{sid}/end")
