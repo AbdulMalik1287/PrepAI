@@ -1,0 +1,11 @@
+langgraph>=1.2
+langgraph-checkpoint-sqlite>=3.1
+langchain>=1.4
+langchain-groq>=1.1
+groq>=0.37
+fastapi>=0.141
+uvicorn>=0.35
+python-multipart
+python-dotenv
+pypdf>=6
+httpx

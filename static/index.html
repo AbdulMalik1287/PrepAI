@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PrepAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #070707;
+    --screen: #0d0d0d;
+    --raised: #1a1a1a;
+    --line: #262626;
+    --text: #f4f4f4;
+    --soft: #b9b9b9;
+    --muted: #7c7c7c;
+    --dim: #3a3a3a;
+    --go: #5ed36a;
+    --warn: #f2b25c;
+    --bad: #ef6a6a;
+    --font: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font: 400 15px/1.5 var(--font);
+    -webkit-font-smoothing: antialiased; display: grid; place-items: center;
+  }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--soft); outline-offset: 3px; }
+
+  .screen {
+    position: relative; width: 100%; max-width: 440px; height: 100dvh; background: var(--screen);
+    display: flex; flex-direction: column; overflow: hidden; padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 520px) {
+    .screen { height: min(100dvh - 40px, 880px); border-radius: 36px; border: 1px solid #1c1c1c;
+      box-shadow: 0 40px 120px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04); }
+  }
+  .view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+  /* ---------- top bar ---------- */
+  .clock, .title, .track, .row-end, .question, .heard, .dock, .actions, .brand { flex: none; }
+  .clock { font: 11px/1 var(--mono); letter-spacing: .18em; color: var(--muted); height: 11px; }
+  .title { margin: 10px 0 14px; font-size: 20px; font-weight: 500; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track { height: 3px; border-radius: 3px; background: #2e2e2e; overflow: hidden; }
+  .track > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #3fae4b, var(--go)); transform: scaleX(0); transform-origin: left; transition: transform .6s cubic-bezier(.2,.8,.2,1); }
+  .icon-btn { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: var(--raised); display: grid; place-items: center; }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .row-end { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+  /* ---------- orb ---------- */
+  .orb-wrap { flex: 1; min-height: 180px; display: grid; place-items: center; }
+  canvas.orb { width: min(78vw, 300px); aspect-ratio: 1; max-width: 100%; }
+  #interview .orb-wrap { position: relative; min-height: 150px; }
+  #main-orb { position: absolute; inset: 0; margin: auto; width: auto; height: min(100%, 300px); }
+
+  /* ---------- question karaoke ---------- */
+  .question {
+    position: relative; height: calc(24px * 1.45 * 3); overflow: hidden; text-align: center; font-size: 24px; line-height: 1.45; font-weight: 300; letter-spacing: -.01em;
+    mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+    -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+  }
+  .question .lines { transition: transform .45s cubic-bezier(.2,.8,.2,1); padding-top: calc(24px * 1.45); }
+  .question span { color: var(--dim); transition: color .25s; }
+  .question span.said { color: var(--soft); }
+  .question span.now { color: var(--text); }
+  .question.settled span { color: var(--text); }
+
+  .heard { min-height: 40px; margin: 10px 0 0; text-align: center; color: var(--muted); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* ---------- mic ---------- */
+  .dock { display: grid; justify-items: center; gap: 10px; padding-top: 8px; }
+  .mic {
+    position: relative; width: 68px; height: 68px; border-radius: 50%; border: 1px solid #2c2c2c;
+    background: radial-gradient(circle at 50% 35%, #2a2a2a, #151515); display: grid; place-items: center;
+    box-shadow: 0 0 0 10px rgba(255,255,255,.025), 0 10px 30px rgba(0,0,0,.5);
+    transition: transform .15s;
+  }
+  .mic:active { transform: scale(.95); }
+  .mic svg { width: 24px; height: 24px; }
+  .mic::after { content: ""; position: absolute; inset: -12px; border-radius: 50%; border: 1px solid rgba(255,255,255,.14); opacity: 0; }
+  [data-phase="listening"] .mic { background: radial-gradient(circle at 50% 35%, #f4f4f4, #cfcfcf); color: #0d0d0d; }
+  [data-phase="listening"] .mic::after { animation: ring 1.6s ease-out infinite; }
+  [data-phase="thinking"] .mic { opacity: .5; cursor: progress; }
+  @keyframes ring { from { opacity: .9; transform: scale(.85); } to { opacity: 0; transform: scale(1.35); } }
+  .hint { font-size: 12px; color: var(--muted); height: 18px; }
+
+  /* ---------- sheet (transcript) ---------- */
+  .sheet { position: absolute; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; z-index: 5; }
+  .sheet-body { width: 100%; max-height: 82%; background: #121212; border-top: 1px solid var(--line); border-radius: 26px 26px 0 0; padding: 18px 20px calc(18px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 14px; }
+  .sheet-head { display: flex; justify-content: space-between; align-items: center; }
+  .sheet-head h2 { margin: 0; font-size: 15px; font-weight: 500; }
+  .log { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-height: 60px; }
+  .bubble { max-width: 88%; padding: 10px 13px; border-radius: 16px; font-size: 14px; line-height: 1.45; }
+  .bubble.ai { background: var(--raised); border-bottom-left-radius: 4px; }
+  .bubble.me { align-self: flex-end; background: #e9e9e9; color: #111; border-bottom-right-radius: 4px; }
+  .compose { display: flex; gap: 8px; }
+  .compose input { flex: 1; min-width: 0; background: #0b0b0b; border: 1px solid var(--line); border-radius: 999px; padding: 11px 16px; }
+  .ghost { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; color: var(--soft); }
+  .ghost.danger { color: var(--bad); border-color: #3a2323; }
+
+  /* ---------- setup ---------- */
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 500; letter-spacing: -.01em; }
+  .brand b { width: 8px; height: 8px; border-radius: 50%; background: var(--go); box-shadow: 0 0 12px var(--go); }
+  #setup-form { overflow-y: auto; margin: 0 -20px; padding: 0 20px 4px; }
+  #setup-form::-webkit-scrollbar { width: 0; }
+  .text:focus-visible { outline: none; border-color: #6a6a6a; }
+  .setup .orb-wrap { flex: 0 0 auto; min-height: 0; margin: 4px 0 0; }
+  .setup canvas.orb { width: 130px; }
+  h1 { margin: 0 0 6px; font-size: 25px; line-height: 1.2; font-weight: 400; letter-spacing: -.02em; text-align: center; }
+  .lede { margin: 0 0 22px; color: var(--muted); text-align: center; font-size: 14px; }
+  #start-form { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
+  .field { display: grid; gap: 6px; }
+  .field > span { font-size: 12px; color: var(--muted); padding-left: 4px; }
+  .text { background: #0a0a0a; border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+  .text::placeholder { color: #555; }
+  .drop { display: flex; align-items: center; gap: 12px; border: 1px dashed #343434; border-radius: 16px; padding: 14px 16px; cursor: pointer; background: #0a0a0a; }
+  .drop.over, .drop:hover { border-color: #5a5a5a; }
+  .drop svg { width: 20px; height: 20px; flex: none; color: var(--soft); }
+  .drop small { display: block; color: var(--muted); font-size: 12px; }
+  .drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: #0a0a0a; border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
+  .seg label { position: relative; text-align: center; padding: 8px 0; border-radius: 10px; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .seg input { position: absolute; opacity: 0; }
+  .seg label:has(input:checked) { background: var(--raised); color: var(--text); }
+  .seg label:has(input:focus-visible) { outline: 2px solid var(--soft); }
+  .primary { margin-top: 6px; border: 0; border-radius: 999px; padding: 15px; background: var(--text); color: #0b0b0b; font-weight: 500; }
+  .primary:disabled { opacity: .45; cursor: not-allowed; }
+  .error { color: var(--bad); font-size: 13px; text-align: center; margin: 0; }
+  .error:empty { display: none; }
+  .loading { flex: 1; display: grid; place-content: center; justify-items: center; gap: 16px; text-align: center; }
+  .loading canvas.orb { width: 220px; }
+  .loading p { margin: 0; color: var(--soft); min-height: 24px; }
+
+  /* ---------- report ---------- */
+  .report { overflow-y: auto; margin: 0 -20px; padding: 0 20px 12px; }
+  .report::-webkit-scrollbar { width: 0; }
+  .score { display: flex; align-items: baseline; gap: 6px; margin: 18px 0 4px; }
+  .score b { font-size: 64px; line-height: 1; font-weight: 300; letter-spacing: -.04em; }
+  .score span { color: var(--muted); font-size: 18px; }
+  .pill { display: inline-block; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--soft); }
+  .pill.good { color: var(--go); border-color: #23452a; }
+  .pill.mid { color: var(--warn); border-color: #4a3a20; }
+  .pill.low { color: var(--bad); border-color: #4a2525; }
+  .report h3 { margin: 26px 0 10px; font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+  .report p { margin: 0; color: var(--soft); }
+  .comp { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin-bottom: 14px; }
+  .comp .track { grid-column: 1 / -1; height: 4px; }
+  .comp small { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; }
+  .list { margin: 0; padding-left: 18px; color: var(--soft); display: grid; gap: 6px; }
+  .card { background: #111; border: 1px solid #1f1f1f; border-radius: 18px; padding: 14px 16px; margin-bottom: 10px; display: grid; gap: 8px; }
+  .card .q { color: var(--text); }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .card p { font-size: 14px; }
+  .card small { color: var(--muted); font-size: 12.5px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags .pill { font-size: 11px; padding: 2px 8px; }
+  .actions { padding-top: 12px; }
+  .actions .primary { width: 100%; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .track > i, .question .lines, .question span { transition: none; }
+    [data-phase="listening"] .mic::after { animation: none; opacity: .6; }
+  }
+</style>
+</head>
+<body>
+<main class="screen" id="screen" data-phase="idle">
+
+  <!-- setup -->
+  <section class="view setup" id="setup">
+    <div class="brand"><b></b>PrepAI</div>
+    <div id="setup-form" class="view">
+      <div class="orb-wrap"><canvas class="orb" data-orb aria-hidden="true"></canvas></div>
+      <h1>Interview practice, built from your resume</h1>
+      <p class="lede">Every answer shapes the next question and your score.</p>
+      <form id="start-form">
+        <label class="field"><span>Role you're interviewing for</span>
+          <input class="text" name="role" required maxlength="80" placeholder="e.g. ML Engineer Intern" autocomplete="off">
+        </label>
+        <label class="drop" id="drop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 18v-6M9 15l3-3 3 3"/></svg>
+          <div><span id="file-name">Upload resume</span><small>PDF, TXT or MD. Links inside are read too.</small></div>
+          <input type="file" name="resume" accept=".pdf,.txt,.md" required>
+        </label>
+        <div class="field"><span>Questions</span>
+          <div class="seg" role="radiogroup" aria-label="Number of questions">
+            <label><input type="radio" name="questions" value="6">6</label>
+            <label><input type="radio" name="questions" value="8" checked>8</label>
+            <label><input type="radio" name="questions" value="10">10</label>
+          </div>
+        </div>
+        <p class="error" id="setup-error" role="alert"></p>
+        <button class="primary" id="start-btn">Start interview</button>
+      </form>
+    </div>
+    <div class="loading" id="setup-loading" hidden>
+      <canvas class="orb" data-orb aria-hidden="true"></canvas>
+      <p id="loading-text" aria-live="polite">Reading your resume</p>
+    </div>
+  </section>
+
+  <!-- interview -->
+  <section class="view" id="interview" hidden>
+    <div class="clock" id="clock">00 : 00 : 00</div>
+    <div class="title" id="role-title"></div>
+    <div class="track" aria-hidden="true"><i id="progress"></i></div>
+    <div class="row-end">
+      <button class="icon-btn" id="open-log" aria-label="Transcript and typed answers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.1A8 8 0 1 1 20 12z"/><path d="M9 10.5h6M9 13.5h4"/></svg>
+      </button>
+    </div>
+    <div class="orb-wrap"><canvas class="orb" data-orb id="main-orb" aria-hidden="true"></canvas></div>
+    <div class="question" id="question" aria-live="polite"><div class="lines" id="lines"></div></div>
+    <p class="heard" id="heard"></p>
+    <div class="dock">
+      <button class="mic" id="mic" aria-label="Answer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9.5 12h1M13.5 12h1"/></svg>
+      </button>
+      <div class="hint" id="hint"></div>
+    </div>
+
+    <div class="sheet" id="sheet" hidden>
+      <div class="sheet-body" role="dialog" aria-label="Transcript">
+        <div class="sheet-head">
+          <h2>Transcript</h2>
+          <button class="icon-btn" id="close-log" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="log" id="log"></div>
+        <form class="compose" id="type-form">
+          <input name="text" placeholder="Type an answer instead" autocomplete="off" aria-label="Typed answer">
+          <button class="ghost">Send</button>
+        </form>
+        <button class="ghost danger" id="end-btn">End interview</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- report -->
+  <section class="view" id="results" hidden>
+    <div class="clock" id="report-clock"></div>
+    <div class="title" id="report-title">Interview report</div>
+    <div class="loading" id="report-loading">
+      <canvas class="orb" data-orb aria-hidden="true"></canvas>
+      <p>Scoring your interview</p>
+    </div>
+    <div class="report" id="report" hidden></div>
+    <div class="actions"><button class="primary" id="again">New interview</button></div>
+  </section>
+
+</main>
+<script src="app.js"></script>
+</body>
+</html>
