@@ -27,7 +27,7 @@ MAX_UPLOAD = 5 * 1024 * 1024
 log = logging.getLogger("prepai")
 
 app = FastAPI(title="PrepAI")
-interviews = graph.build_graph(SqliteSaver(sqlite3.connect(os.getenv("DB_PATH", "prepai.db"), check_same_thread=False)))
+interviews = graph.build_graph(SqliteSaver(sqlite3.connect(os.getenv("DB_PATH", Path(__file__).parent / "prepai.db"), check_same_thread=False)))
 locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)  # one answer at a time per interview
 
 
