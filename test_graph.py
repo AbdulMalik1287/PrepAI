@@ -74,7 +74,8 @@ class FakeLLM:
         self.tasks.append(prompt.split("Your task for this turn: ")[1].split("\n")[0])
         return AIMessage(content=f"Question {len(self.tasks)}?")
 
-    def with_structured_output(self, schema):
+    def with_structured_output(self, schema, **kwargs):
+        assert kwargs == {"method": "json_schema", "strict": True}, kwargs
         class Runner:
             def invoke(self, prompt):
                 if schema is Grade:

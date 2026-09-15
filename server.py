@@ -13,6 +13,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi.responses import JSONResponse
+from groq import APIError, RateLimitError
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
@@ -29,6 +31,14 @@ log = logging.getLogger("prepai")
 app = FastAPI(title="PrepAI")
 interviews = graph.build_graph(SqliteSaver(sqlite3.connect(os.getenv("DB_PATH", Path(__file__).parent / "prepai.db"), check_same_thread=False)))
 locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)  # one answer at a time per interview
+
+
+@app.exception_handler(APIError)
+def ai_service_error(request, err: APIError):
+    log.warning("Groq error on %s: %s", request.url.path, err)
+    if isinstance(err, RateLimitError):
+        return JSONResponse({"detail": "Groq's free usage limit is used up for now. Try again later."}, status_code=429)
+    return JSONResponse({"detail": "The AI service hit an error. Please try again."}, status_code=502)
 
 
 def config(sid: str) -> dict:
@@ -52,7 +62,7 @@ def start(resume: UploadFile = File(...), role: str = Form(...), questions: int 
     if len(text) < 200:
         raise HTTPException(422, "Couldn't read text from that resume. Is it a scanned image?")
     resources = fetch_resources(links)
-    profile = extract_profile(graph.llm(), text, resources, role)
+    profile = extract_profile(graph.structured, text, resources, role)
     if not profile.claims:
         raise HTTPException(422, "Couldn't find any concrete experience to ask about")
 

@@ -33,6 +33,12 @@ def llm():
     return _llm
 
 
+def structured(schema):
+    # Strict JSON schema makes the provider constrain decoding to the schema. Tool calling let
+    # the model drop required fields, which Groq rejects with a 400.
+    return llm().with_structured_output(schema, method="json_schema", strict=True)
+
+
 # ---------------------------------------------------------------- schemas
 
 class Grade(BaseModel):
@@ -215,7 +221,7 @@ def grade(state: State) -> dict:
     if answer != END_SIGNAL:
         claim = next(c for c in state["profile"]["claims"] if c["id"] == state["claim_id"])
         prompt = GRADE_PROMPT.format(role=state["role"], claim=claim["text"], question=state["question"], answer=answer)
-        result = llm().with_structured_output(Grade).invoke(prompt).model_dump()
+        result = structured(Grade).invoke(prompt).model_dump()
     turns.append(Turn(claim_id=state["claim_id"], move=state["move"], question=state["question"], answer=answer, grade=result))
     return {"turns": turns}
 
@@ -242,7 +248,7 @@ def report(state: State) -> dict:
         role=state["role"], name=profile["name"], headline=profile["headline"],
         competencies=", ".join(profile["competencies"]), transcript=transcript,
     )
-    result = llm().with_structured_output(Report).invoke(prompt)
+    result = structured(Report).invoke(prompt)
     return {"report": result.model_dump(), "score": overall_score(turns)}
 
 

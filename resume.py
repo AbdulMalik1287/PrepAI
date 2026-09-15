@@ -138,7 +138,8 @@ LINKED RESOURCES:
 {resources}"""
 
 
-def extract_profile(llm, resume_text: str, resources: dict[str, str], role: str) -> Profile:
+def extract_profile(structured, resume_text: str, resources: dict[str, str], role: str) -> Profile:
+    """`structured(schema)` returns a runnable that yields that schema (graph.structured)."""
     blob = "\n\n".join(f"[{url}]\n{text}" for url, text in resources.items()) or "(none)"
     prompt = PROFILE_PROMPT.format(role=role, resume=resume_text[:12000], resources=blob[:12000])
-    return llm.with_structured_output(Profile).invoke(prompt)
+    return structured(Profile).invoke(prompt)
